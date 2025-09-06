@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: deriv-proxy-service
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: LOG_LEVEL
+        value: info
+      - key: DERIV_APP_ID
+        value: 1089
+      - key: DERIV_WS_URL
+        value: wss://ws.derivws.com/websockets/v3
+      - key: DERIV_WS_URL_DEMO
+        value: wss://ws.derivws.com/websockets/v3
+      - key: DEFAULT_STAKE
+        value: 1
+      - key: MAX_STAKE
+        value: 50000
+      - key: RISK_MANAGEMENT_ENABLED
+        value: true
+      - key: FIXED_DURATION
+        value: 15
+      - key: FIXED_DURATION_UNIT
+        value: s
+      - key: ALLOWED_CONTRACT_TYPES
+        value: CALL,PUT
+      # These need to be set as secrets in Render dashboard:
+      # - DERIV_API_TOKEN
+      # - API_KEY
