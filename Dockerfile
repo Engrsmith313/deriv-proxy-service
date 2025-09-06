@@ -8,14 +8,17 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy source code
 COPY src/ ./src/
 
 # Build the application
 RUN npm run build
+
+# Remove dev dependencies after build
+RUN npm ci --only=production && npm cache clean --force
 
 # Create logs directory
 RUN mkdir -p logs
@@ -29,11 +32,11 @@ RUN chown -R deriv:nodejs /app
 USER deriv
 
 # Expose port
-EXPOSE 3000
+EXPOSE 10000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/status/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
+  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 10000) + '/api/status/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
 
 # Start the application
 CMD ["npm", "start"]
