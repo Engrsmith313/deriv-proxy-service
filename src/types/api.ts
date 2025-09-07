@@ -22,9 +22,34 @@ export interface TradeResponse {
     shortcode: string;
     purchaseTime: number;
     startTime: number;
+    // Enhanced market information
+    selectedMarket?: {
+      symbol: string;
+      displayName: string;
+      risePayoutPercentage: number;
+      fallPayoutPercentage: number;
+      averagePayoutPercentage: number;
+      selectionReason: string;
+    };
+    contractTypeMapping?: {
+      original: string;
+      mapped: string;
+    };
   };
   error?: string;
   message?: string;
+  validationDetails?: any;
+  marketSelection?: {
+    selectedMarket: string;
+    selectionReason: string;
+    totalMarketsAnalyzed: number;
+    payoutDetails: {
+      rise: number;
+      fall: number;
+      meetsMinimumPayout: boolean;
+      hasIdenticalPayouts: boolean;
+    };
+  };
 }
 
 export interface BalanceResponse {

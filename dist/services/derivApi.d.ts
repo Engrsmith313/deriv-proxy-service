@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { DerivConfig, AuthorizeResponse, BalanceResponse, ContractResponse, PortfolioResponse } from '../types/deriv';
+import { DerivConfig, DerivResponse, AuthorizeResponse, BalanceResponse, ContractResponse, PortfolioResponse } from '../types/deriv';
 export declare class DerivApiService extends EventEmitter {
     private ws;
     private config;
@@ -30,7 +30,7 @@ export declare class DerivApiService extends EventEmitter {
         durationUnit: string;
         basis?: string;
     }): Promise<ContractResponse>;
-    private sendRequest;
+    sendRequest<T extends DerivResponse>(request: any): Promise<T>;
     private handleMessage;
     private handleReconnection;
     private ensureAuthenticated;

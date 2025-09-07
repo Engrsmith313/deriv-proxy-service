@@ -154,6 +154,47 @@ function createTradingRoutes(tradingService) {
             });
         }
     });
+    router.get('/analyze-markets', async (req, res) => {
+        try {
+            const amount = parseFloat(req.query.amount) || 10;
+            const duration = parseInt(req.query.duration) || 5;
+            const durationUnit = req.query.durationUnit || 't';
+            logger_1.default.info('Market analysis requested', {
+                amount,
+                duration,
+                durationUnit,
+                ip: req.ip
+            });
+            const analysis = await tradingService.analyzeMarkets(amount, duration, durationUnit);
+            res.status(analysis.success ? 200 : 400).json(analysis);
+        }
+        catch (error) {
+            logger_1.default.error('Error in market analysis:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Internal server error',
+                message: 'An unexpected error occurred during market analysis'
+            });
+        }
+    });
+    router.post('/clear-market-cache', async (req, res) => {
+        try {
+            tradingService.clearMarketCache();
+            logger_1.default.info('Market cache cleared', { ip: req.ip });
+            res.status(200).json({
+                success: true,
+                message: 'Market cache cleared successfully'
+            });
+        }
+        catch (error) {
+            logger_1.default.error('Error clearing market cache:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Internal server error',
+                message: 'An unexpected error occurred while clearing market cache'
+            });
+        }
+    });
     return router;
 }
 //# sourceMappingURL=trading.js.map

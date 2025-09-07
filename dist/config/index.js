@@ -31,7 +31,16 @@ class Config {
         this.trading = {
             fixedDuration: parseInt(process.env.FIXED_DURATION || '15', 10),
             fixedDurationUnit: process.env.FIXED_DURATION_UNIT || 's',
-            allowedContractTypes: (process.env.ALLOWED_CONTRACT_TYPES || 'CALL,PUT').split(',')
+            allowedContractTypes: (process.env.ALLOWED_CONTRACT_TYPES || 'RISE,FALL').split(','),
+            minimumPayout: parseFloat(process.env.MINIMUM_PAYOUT || '95'),
+            requireIdenticalPayouts: process.env.REQUIRE_IDENTICAL_PAYOUTS !== 'false',
+            allowedMarketTypes: (process.env.ALLOWED_MARKET_TYPES || 'continuous_indices').split(','),
+            contractTypeMapping: {
+                'CALL': 'RISE',
+                'PUT': 'FALL',
+                'RISE': 'RISE',
+                'FALL': 'FALL'
+            }
         };
         this.websocket = {
             enabled: process.env.WEBSOCKET_ENABLED !== 'false',

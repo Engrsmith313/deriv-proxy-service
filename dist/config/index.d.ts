@@ -17,6 +17,12 @@ export declare class Config {
         fixedDuration: number;
         fixedDurationUnit: string;
         allowedContractTypes: string[];
+        minimumPayout: number;
+        requireIdenticalPayouts: boolean;
+        allowedMarketTypes: string[];
+        contractTypeMapping: {
+            [key: string]: string;
+        };
     };
     readonly websocket: {
         enabled: boolean;

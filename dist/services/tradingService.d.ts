@@ -5,6 +5,7 @@ import { ActiveTrade } from '../types/deriv';
 export declare class TradingService {
     private derivApi;
     private webSocketService;
+    private marketSelectionService;
     private activeTrades;
     private contractSubscriptions;
     private portfolioSubscribed;
@@ -16,6 +17,7 @@ export declare class TradingService {
     getBalance(): Promise<BalanceResponse>;
     getPortfolio(): Promise<PortfolioResponse>;
     getContractDetails(contractId: number): Promise<ContractDetailsResponse>;
+    private validateAndMapTradeRequest;
     private validateTradeRequest;
     private validateTrade;
     isConnectedAndReady(): boolean;
@@ -25,6 +27,13 @@ export declare class TradingService {
         lastActivity: Date;
     };
     getActiveTrades(): ActiveTrade[];
+    analyzeMarkets(amount?: number, duration?: number, durationUnit?: string): Promise<{
+        success: boolean;
+        data?: any;
+        error?: string;
+        message: string;
+    }>;
+    clearMarketCache(): void;
     setWebSocketService(webSocketService: WebSocketService): void;
     private startTradeMonitoring;
     private stopTradeMonitoring;

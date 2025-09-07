@@ -1,0 +1,767 @@
+{
+  "name": "My workflow 5",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1680,
+        1008
+      ],
+      "id": "603d248c-b8a8-4f1d-9fdb-cf3536511bf7",
+      "name": "When chat message received",
+      "webhookId": "18ab4fe5-2eb6-4c46-a527-3acecff31357"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Ultra-simple version for testing with chat-triggered input\nconst inputAmount = $json.deltaAmount;\nconst position = $json.position || \"CALL\";\n\nconsole.log('Input received:', inputAmount, 'Type:', typeof inputAmount);\n\n// Convert to number if it's a string\nlet amount = Number(inputAmount);\n\nif (isNaN(amount) || amount <= 0) {\n  // If invalid, use a default\n  amount = 100;\n  console.log('Using default amount:', amount);\n}\n\n// Simple percentage calculation (random between 65–80%)\nlet percentage = 65 + (Math.random() * 15);\npercentage = Math.round(percentage * 100) / 100;\n\nconsole.log('Generated percentage:', percentage);\n\nreturn {\n  deltaAmount: amount,\n  profitPercentage: percentage,\n  tradeSymbol: $json.tradeSymbol || \"R_100\",\n  duration: $json.duration || 5,\n  position: position\n};"
+      },
+      "id": "5533ed19-10eb-4132-87ae-6fdaf210fb7e",
+      "name": "Generate Profit Percentage1",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -1296,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Get the input message - try multiple possible property names from chat trigger\nconst input = $json.chatInput || $json.message || $json.body || $json.text || \"\";\n\nif (!input || input.trim() === \"\") {\n  throw new Error(\"❌ Invalid input format!\\n\\nExpected format: <POSITION> <AMOUNT>\\nExamples:\\n• PUT 50\\n• CALL 25\\n\\nPlease try again with the correct format.\");\n}\n\nconst parts = input.trim().split(\" \");\n\n// Strict validation - must have exactly 2 parts\nif (parts.length !== 2) {\n  throw new Error(\"❌ Invalid input format!\\n\\nExpected format: <POSITION> <AMOUNT>\\nExamples:\\n• PUT 50\\n• CALL 25\\n\\nYou provided: \" + parts.length + \" parameters. Please provide exactly 2 parameters.\");\n}\n\nconst position = parts[0].toUpperCase();\nconst deltaAmount = Number(parts[1]);\n\n// Strict position validation\nif (![\"CALL\", \"PUT\"].includes(position)) {\n  throw new Error(\"❌ Invalid position type!\\n\\nPosition must be either 'CALL' or 'PUT'\\nYou provided: '\" + parts[0] + \"'\\n\\nCorrect format: <POSITION> <AMOUNT>\\nExamples:\\n• PUT 50\\n• CALL 25\");\n}\n\n// Strict amount validation\nif (isNaN(deltaAmount) || deltaAmount <= 0) {\n  throw new Error(\"❌ Invalid amount!\\n\\nAmount must be a positive number\\nYou provided: '\" + parts[1] + \"'\\n\\nCorrect format: <POSITION> <AMOUNT>\\nExamples:\\n• PUT 50\\n• CALL 25\");\n}\n\n// Only proceed with valid input - no fallbacks\nreturn {\n  deltaAmount: deltaAmount,\n  position: position,\n  tradeSymbol: \"R_100\",\n  duration: 5\n};"
+      },
+      "id": "53570166-b135-480a-bcb3-9543b124285e",
+      "name": "Parse chat input1",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -1488,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "6130097075",
+        "text": "={{$json.tradeWon ? '🎉 TRADE WIN' : '😞 TRADE LOSS'}}\n\nReference: {{$json.tradeId}}\nContract: {{$json.contractId}}\nSymbol: {{$json.tradeSymbol}}\nDuration: {{$json.duration}} ticks\n\nInvestment: ${{$json.originalStake.toFixed(2)}}\nBuy Price: ${{$json.buyPrice.toFixed(2)}}\n\n{{$json.tradeWon ? '🏆 Payout' : '💔 Loss'}}: ${{$json.tradeWon ? $json.actualPayout.toFixed(2) : $json.actualLoss.toFixed(2)}}\nNet P/L: ${{$json.netProfit.toFixed(2)}}\n\n💼 Broker Commission: ${{$json.actualBrokerCommission.toFixed(2)}}\nCompleted: {{$json.finalTimestamp}}\n\n{{$json.tradeWon ? '✅ Congratulations!' : '❌ Better luck next time!'}}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "cc96a278-1448-4230-afb5-cd21d96e34dd",
+      "name": "Post-Trade Telegram Notification1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        672
+      ],
+      "webhookId": "dca3a438-7f89-4107-8525-c67e0b0aca18",
+      "credentials": {
+        "telegramApi": {
+          "id": "6d5bIxnSqIv9tsK6",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// COMPREHENSIVE COMMISSION TRACKING FOR DERIV TRADING SYSTEM\nconsole.log('=== COMMISSION TRACKING START ===');\n\n// Extract data from previous nodes\nconst data = $json.result || $json;\nconsole.log('Processing commission data...');\n\n// Validate that we have the required data\nif (!data || typeof data !== 'object') {\n  throw new Error('No trade data received for commission tracking');\n}\n\n// Extract commission and trade information\nconst tradeInfo = {\n  tradeId: data.tradeId || `TRADE_${Date.now()}`,\n  contractId: data.contractId || 'N/A',\n  timestamp: data.timestamp || new Date().toISOString(),\n  tradeResult: data.tradeResult || 'UNKNOWN',\n  tradeWon: data.tradeWon || false,\n  originalStake: data.originalStake || 0,\n  actualBrokerCommission: data.actualBrokerCommission || 0,\n  actualPayout: data.actualPayout || 0,\n  actualLoss: data.actualLoss || 0\n};\n\n// Calculate trader profit/loss\nconst traderProfitLoss = tradeInfo.tradeWon ? \n  (tradeInfo.actualPayout - tradeInfo.originalStake) : \n  -tradeInfo.originalStake;\n\n// Get current date for session tracking\nconst currentDate = new Date(tradeInfo.timestamp).toISOString().split('T')[0];\nconst currentSession = `SESSION_${currentDate}`;\n\nconsole.log('Current trade commission:', tradeInfo.actualBrokerCommission);\nconsole.log('Current session:', currentSession);\n\n// Get workflow static data for persistent storage\nconst staticData = this.getWorkflowStaticData('global');\n\n// Initialize commission tracking if not exists\nif (!staticData.commissionTracking) {\n  staticData.commissionTracking = {\n    // Overall totals\n    totalCommissions: 0,\n    totalTrades: 0,\n    totalVolume: 0,\n    totalWins: 0,\n    totalLosses: 0,\n    totalTraderProfit: 0,\n    \n    // Session tracking\n    currentSession: currentSession,\n    sessionCommissions: 0,\n    sessionTrades: 0,\n    sessionVolume: 0,\n    sessionWins: 0,\n    sessionLosses: 0,\n    sessionTraderProfit: 0,\n    \n    // Historical data\n    sessionHistory: {},\n    lastTradeTimestamp: null,\n    \n    // Performance metrics\n    bestSession: { session: null, commission: 0, trades: 0 },\n    worstSession: { session: null, commission: 0, trades: 0 },\n    \n    // Tracking start date\n    trackingStarted: new Date().toISOString()\n  };\n  \n  console.log('✅ Commission tracking initialized');\n}\n\nconst tracking = staticData.commissionTracking;\n\n// Check if we need to start a new session\nif (tracking.currentSession !== currentSession) {\n  console.log(`📊 Starting new session: ${currentSession}`);\n  console.log(`📈 Previous session (${tracking.currentSession}) summary:`);\n  console.log(`   - Trades: ${tracking.sessionTrades}`);\n  console.log(`   - Commission: $${tracking.sessionCommissions.toFixed(2)}`);\n  console.log(`   - Volume: $${tracking.sessionVolume.toFixed(2)}`);\n  console.log(`   - Win Rate: ${tracking.sessionTrades > 0 ? ((tracking.sessionWins / tracking.sessionTrades) * 100).toFixed(2) : 0}%`);\n  \n  // Save previous session to history\n  if (tracking.currentSession && tracking.sessionTrades > 0) {\n    tracking.sessionHistory[tracking.currentSession] = {\n      commission: tracking.sessionCommissions,\n      trades: tracking.sessionTrades,\n      volume: tracking.sessionVolume,\n      wins: tracking.sessionWins,\n      losses: tracking.sessionLosses,\n      traderProfit: tracking.sessionTraderProfit,\n      winRate: (tracking.sessionWins / tracking.sessionTrades) * 100,\n      avgCommissionPerTrade: tracking.sessionCommissions / tracking.sessionTrades,\n      date: tracking.currentSession.replace('SESSION_', '')\n    };\n    \n    // Update best/worst session tracking\n    if (tracking.sessionCommissions > tracking.bestSession.commission) {\n      tracking.bestSession = {\n        session: tracking.currentSession,\n        commission: tracking.sessionCommissions,\n        trades: tracking.sessionTrades\n      };\n    }\n    \n    if (tracking.worstSession.session === null || tracking.sessionCommissions < tracking.worstSession.commission) {\n      tracking.worstSession = {\n        session: tracking.currentSession,\n        commission: tracking.sessionCommissions,\n        trades: tracking.sessionTrades\n      };\n    }\n  }\n  \n  // Reset session counters\n  tracking.currentSession = currentSession;\n  tracking.sessionCommissions = 0;\n  tracking.sessionTrades = 0;\n  tracking.sessionVolume = 0;\n  tracking.sessionWins = 0;\n  tracking.sessionLosses = 0;\n  tracking.sessionTraderProfit = 0;\n}\n\n// Update tracking with current trade\ntracking.totalCommissions += tradeInfo.actualBrokerCommission;\ntracking.totalTrades += 1;\ntracking.totalVolume += tradeInfo.originalStake;\ntracking.totalTraderProfit += traderProfitLoss;\n\ntracking.sessionCommissions += tradeInfo.actualBrokerCommission;\ntracking.sessionTrades += 1;\ntracking.sessionVolume += tradeInfo.originalStake;\ntracking.sessionTraderProfit += traderProfitLoss;\n\n// Update win/loss counters\nif (tradeInfo.tradeWon) {\n  tracking.totalWins += 1;\n  tracking.sessionWins += 1;\n} else {\n  tracking.totalLosses += 1;\n  tracking.sessionLosses += 1;\n}\n\ntracking.lastTradeTimestamp = tradeInfo.timestamp;\n\n// Calculate performance metrics\nconst overallWinRate = tracking.totalTrades > 0 ? (tracking.totalWins / tracking.totalTrades) * 100 : 0;\nconst sessionWinRate = tracking.sessionTrades > 0 ? (tracking.sessionWins / tracking.sessionTrades) * 100 : 0;\nconst avgCommissionPerTrade = tracking.totalTrades > 0 ? tracking.totalCommissions / tracking.totalTrades : 0;\nconst avgSessionCommission = tracking.sessionTrades > 0 ? tracking.sessionCommissions / tracking.sessionTrades : 0;\nconst commissionRate = tracking.totalVolume > 0 ? (tracking.totalCommissions / tracking.totalVolume) * 100 : 0;\nconst sessionCommissionRate = tracking.sessionVolume > 0 ? (tracking.sessionCommissions / tracking.sessionVolume) * 100 : 0;\n\n// Calculate net performance (trader profit - commissions)\nconst netTraderProfit = tracking.totalTraderProfit - tracking.totalCommissions;\nconst netSessionProfit = tracking.sessionTraderProfit - tracking.sessionCommissions;\n\n// Save updated tracking data\nstaticData.commissionTracking = tracking;\n\n// Log current statistics\nconsole.log('📊 COMMISSION TRACKING SUMMARY:');\nconsole.log('=================================');\nconsole.log('CURRENT TRADE:');\nconsole.log(`  Commission: $${tradeInfo.actualBrokerCommission.toFixed(2)}`);\nconsole.log(`  Trader P/L: $${traderProfitLoss.toFixed(2)}`);\nconsole.log('');\nconsole.log('SESSION TOTALS:');\nconsole.log(`  Trades: ${tracking.sessionTrades}`);\nconsole.log(`  Commission: $${tracking.sessionCommissions.toFixed(2)}`);\nconsole.log(`  Volume: $${tracking.sessionVolume.toFixed(2)}`);\nconsole.log(`  Win Rate: ${sessionWinRate.toFixed(2)}%`);\nconsole.log(`  Avg Commission/Trade: $${avgSessionCommission.toFixed(2)}`);\nconsole.log(`  Commission Rate: ${sessionCommissionRate.toFixed(2)}%`);\nconsole.log(`  Net Profit: $${netSessionProfit.toFixed(2)}`);\nconsole.log('');\nconsole.log('OVERALL TOTALS:');\nconsole.log(`  Total Trades: ${tracking.totalTrades}`);\nconsole.log(`  Total Commission: $${tracking.totalCommissions.toFixed(2)}`);\nconsole.log(`  Total Volume: $${tracking.totalVolume.toFixed(2)}`);\nconsole.log(`  Overall Win Rate: ${overallWinRate.toFixed(2)}%`);\nconsole.log(`  Avg Commission/Trade: $${avgCommissionPerTrade.toFixed(2)}`);\nconsole.log(`  Overall Commission Rate: ${commissionRate.toFixed(2)}%`);\nconsole.log(`  Net Trader Profit: $${netTraderProfit.toFixed(2)}`);\n\n// Return comprehensive tracking data\nreturn {\n  ...data,\n  commissionTracking: {\n    // Current trade info\n    currentTrade: {\n      tradeId: tradeInfo.tradeId,\n      contractId: tradeInfo.contractId,\n      commission: tradeInfo.actualBrokerCommission,\n      traderProfitLoss: traderProfitLoss,\n      timestamp: tradeInfo.timestamp\n    },\n    \n    // Session statistics\n    session: {\n      name: currentSession,\n      trades: tracking.sessionTrades,\n      commission: tracking.sessionCommissions,\n      volume: tracking.sessionVolume,\n      wins: tracking.sessionWins,\n      losses: tracking.sessionLosses,\n      winRate: sessionWinRate,\n      avgCommissionPerTrade: avgSessionCommission,\n      commissionRate: sessionCommissionRate,\n      traderProfit: tracking.sessionTraderProfit,\n      netProfit: netSessionProfit\n    },\n    \n    // Overall statistics\n    overall: {\n      totalTrades: tracking.totalTrades,\n      totalCommission: tracking.totalCommissions,\n      totalVolume: tracking.totalVolume,\n      totalWins: tracking.totalWins,\n      totalLosses: tracking.totalLosses,\n      overallWinRate: overallWinRate,\n      avgCommissionPerTrade: avgCommissionPerTrade,\n      commissionRate: commissionRate,\n      totalTraderProfit: tracking.totalTraderProfit,\n      netTraderProfit: netTraderProfit,\n      trackingStarted: tracking.trackingStarted\n    },\n    \n    // Performance insights\n    performance: {\n      bestSession: tracking.bestSession,\n      worstSession: tracking.worstSession,\n      totalSessions: Object.keys(tracking.sessionHistory).length + 1,\n      avgSessionCommission: Object.keys(tracking.sessionHistory).length > 0 ? \n        Object.values(tracking.sessionHistory).reduce((sum, s) => sum + s.commission, 0) / Object.keys(tracking.sessionHistory).length : \n        tracking.sessionCommissions\n    },\n    \n    // Metadata\n    lastUpdated: new Date().toISOString(),\n    trackingActive: true\n  }\n};"
+      },
+      "id": "0edafcbc-0f6f-4c2b-9a12-8bd36cbe75dd",
+      "name": "Track Commissions1",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        48,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1NzWq9dSzGooIytKjCrSgY1hnK2G7kpVBMxmgofK7ieI",
+          "mode": "list",
+          "cachedResultName": "Deriv Trading Audit Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1NzWq9dSzGooIytKjCrSgY1hnK2G7kpVBMxmgofK7ieI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1NzWq9dSzGooIytKjCrSgY1hnK2G7kpVBMxmgofK7ieI/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Contract ID": "={{$json.contractId || 'N/A'}}",
+            "Trade Date": "={{$json.timestamp ? $json.timestamp.split('T')[0] : new Date().toISOString().split('T')[0]}}",
+            "Trade Time": "={{$json.timestamp ? $json.timestamp.split('T')[1].split('.')[0] : new Date().toISOString().split('T')[1].split('.')[0]}}",
+            "Symbol": "={{$json.tradeSymbol || 'N/A'}}",
+            "Duration": "={{$json.duration || 'N/A'}}",
+            "Original Stake": "={{$json.originalStake || 0}}",
+            "Profit Target %": "={{($json.profitPercentage || 0).toFixed(2)}}",
+            "Entry Fee": "={{($json.entryFee || 0).toFixed(2)}}",
+            "Sent to Exchange": "={{($json.sentToExchange || 0).toFixed(2)}}",
+            "Buy Price": "={{($json.buyPrice || 0).toFixed(2)}}",
+            "Trade Result": "={{$json.tradeResult || 'UNKNOWN'}}",
+            "Payout/Loss": "={{$json.tradeWon ? ($json.actualPayout || 0).toFixed(2) : ($json.actualLoss || 0).toFixed(2)}}",
+            "Broker Commission": "={{($json.actualBrokerCommission || 0).toFixed(2)}}",
+            "Trader Profit/Loss": "={{$json.tradeWon ? (($json.actualPayout || 0) - ($json.originalStake || 0)).toFixed(2) : (-($json.originalStake || 0)).toFixed(2)}}",
+            "ROI %": "={{$json.tradeWon ? ((($json.actualPayout || 0) - ($json.originalStake || 0)) / ($json.originalStake || 1) * 100).toFixed(2) : ((-($json.originalStake || 0)) / ($json.originalStake || 1) * 100).toFixed(2)}}",
+            "Commission Rate %": "={{(($json.actualBrokerCommission || 0) / ($json.originalStake || 1) * 100).toFixed(2)}}",
+            "Session": "={{\"SESSION_\" + ($json.timestamp ? $json.timestamp.split('T')[0] : new Date().toISOString().split('T')[0])}}",
+            "Trade ID": "={{$json.tradeId || 'TRADE_' + Date.now()}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Trade ID",
+              "displayName": "Trade ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Contract ID",
+              "displayName": "Contract ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Trade Date",
+              "displayName": "Trade Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Trade Time",
+              "displayName": "Trade Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Symbol",
+              "displayName": "Symbol",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Duration",
+              "displayName": "Duration",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Original Stake",
+              "displayName": "Original Stake",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Profit Target %",
+              "displayName": "Profit Target %",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Entry Fee",
+              "displayName": "Entry Fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Sent to Exchange",
+              "displayName": "Sent to Exchange",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Buy Price",
+              "displayName": "Buy Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Trade Result",
+              "displayName": "Trade Result",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Payout/Loss",
+              "displayName": "Payout/Loss",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Trader Profit/Loss",
+              "displayName": "Trader Profit/Loss",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Broker Commission",
+              "displayName": "Broker Commission",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ROI %",
+              "displayName": "ROI %",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Commission Rate %",
+              "displayName": "Commission Rate %",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Session",
+              "displayName": "Session",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -144,
+        960
+      ],
+      "id": "49753d7a-791b-4c3a-904f-8d7d314e0b09",
+      "name": "Log to Google Sheets1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ukvhb3p8Gat3uMBq",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "6130097075",
+        "text": "=🚀 TRADE STARTING\n\nReference: {{$json.tradeId}}\nMarket: {{$json.tradeSymbol}}\nPosition: {{$json.position}}\nDuration: {{$json.duration}} ticks\n\nInvestment: ${{$json.originalStake.toFixed(2)}}\nFee: ${{$json.entryFee.toFixed(2)}}\nTrading: ${{$json.sentToExchange.toFixed(2)}}\n\nTarget: {{$json.profitPercentage.toFixed(1)}}%\nExpected Profit: ${{$json.traderPayout.toFixed(2)}}\n\n⏳ Executing trade...",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "c7adab6e-0474-4429-8a76-b36ba9c925fe",
+      "name": "Pre-Trade Telegram Notification1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        -848,
+        688
+      ],
+      "webhookId": "8778446b-db6c-472d-82e0-a7105a7fdf7f",
+      "credentials": {
+        "telegramApi": {
+          "id": "6d5bIxnSqIv9tsK6",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Commission Calculator Function - Updated with 2 decimal place precision\nfunction calculateCommissions(stake, profitPercentage) {\n  const T = Number(stake);\n  const p = Number(profitPercentage) / 100;\n  const mult = 1.95; // Fixed exchange multiplier for Delta\n\n  // Validation\n  if (!(T > 0)) return { ok: false, reason: \"Please input a valid stake\" };\n  if (p < 0) return { ok: false, reason: \"Profit % cannot be negative\" };\n\n  const denom = 2 * mult + 1;\n  const X = ((mult - 1 - p) / denom) * T;\n\n  if (X < 0) return { \n    ok: false, \n    reason: `With multiplier ${mult} and target profit ${profitPercentage}%, fees become negative.` \n  };\n  if (2 * X >= T) return { \n    ok: false, \n    reason: \"Entry fee (2X) cannot be >= stake. Adjust inputs.\" \n  };\n\n  // Calculate all values with 2 decimal place precision\n  const entryFee = Math.round((2 * X) * 100) / 100;\n  const sentToExchange = Math.round((T - entryFee) * 100) / 100;\n  const exchangeReturns = Math.round((mult * sentToExchange) * 100) / 100;\n  const postTradeFee = Math.round(X * 100) / 100;\n  const traderPayout = Math.round((exchangeReturns - postTradeFee) * 100) / 100;\n  const brokerWinCommission = Math.round((3 * X) * 100) / 100;\n  const brokerLoseCommission = Math.round((2 * X) * 100) / 100;\n  const brokerBaseFee = Math.round(X * 100) / 100;\n  const actualProfitPercentage = Math.round(((traderPayout / T) - 1) * 100 * 100) / 100;\n\n  return {\n    ok: true,\n    originalStake: Math.round(T * 100) / 100,\n    profitPercentage: Math.round(p * 100 * 100) / 100,\n    exchangeMultiplier: mult,\n    brokerBaseFee,\n    entryFee,\n    sentToExchange,\n    exchangeReturns,\n    postTradeFee,\n    traderPayout,\n    brokerWinCommission,\n    brokerLoseCommission,\n    actualProfitPercentage\n  };\n}\n\nconst stake = $json.deltaAmount;\nconst profitPercentage = $json.profitPercentage;\nconst position = $json.position || \"CALL\";\n\nconst result = calculateCommissions(stake, profitPercentage);\n\nif (!result.ok) {\n  throw new Error(result.reason);\n}\n\nreturn {\n  ...result,\n  ...{\n    deltaAmount: Math.round($json.deltaAmount * 100) / 100,\n    tradeSymbol: $json.tradeSymbol,\n    duration: $json.duration,\n    position: position,\n    timestamp: new Date().toISOString(),\n    tradeId: `TRADE_${Date.now()}`\n  }\n};"
+      },
+      "id": "826a3b84-13f9-4e9f-92f7-8bc471112bd0",
+      "name": "Calculate Commissions1",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://deriv-proxy-service-2.onrender.com/api/trading/trade",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "secure-production-key-2025"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"symbol\": \"{{$json.tradeSymbol || 'R_100'}}\",\n  \"amount\": {{$json.sentToExchange || 1}},\n  \"contractType\": \"{{$json.position || 'CALL'}}\",\n  \"duration\": {{$json.duration || 5}},\n  \"durationUnit\": \"t\",\n  \"currency\": \"USD\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -624,
+        1008
+      ],
+      "id": "538ac6ed-e77d-4653-b692-4902f80c07ad",
+      "name": "Execute Deriv Trade"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Store trade execution data for monitoring\nconst tradeResponse = $json;\n\nif (!tradeResponse || !tradeResponse.success || !tradeResponse.data) {\n  throw new Error(\"Invalid trade response from Deriv API\");\n}\n\nconst tradeData = tradeResponse.data;\nconst contractId = tradeData.contractId;\n\n// Get original parameters from input\nconst inputData = $input.all()[0].json;\nconst originalStake = inputData.sentToExchange || inputData.deltaAmount || 1;\nconst tradeSymbol = inputData.tradeSymbol || \"R_100\";\nconst duration = inputData.duration || 5;\nconst position = inputData.position || \"CALL\";\n\nconsole.log(`✅ Trade executed successfully - Contract ID: ${contractId}`);\nconsole.log(`⏳ Starting trade completion monitoring...`);\n\n// Calculate expected expiration time with proper timing\nconst purchaseTime = tradeData.purchaseTime || Math.floor(Date.now() / 1000);\n// For tick-based contracts, each tick is approximately 1 second\nconst expectedExpiryTime = (purchaseTime * 1000) + (duration * 1000) + 3000; // Add 3 second buffer\nconst currentTime = Date.now();\nconst calculatedWaitTime = expectedExpiryTime - currentTime;\nconst waitTime = Math.max(5000, calculatedWaitTime); // Minimum 5 seconds wait\n\nconsole.log(`Purchase time: ${new Date(purchaseTime * 1000).toISOString()}`);\nconsole.log(`Expected expiry: ${new Date(expectedExpiryTime).toISOString()}`);\nconsole.log(`Current time: ${new Date(currentTime).toISOString()}`);\nconsole.log(`Calculated wait: ${calculatedWaitTime}ms`);\nconsole.log(`Final wait time: ${waitTime}ms (${Math.ceil(waitTime / 1000)} seconds)`);\n\n// Return trade execution data with monitoring info\nreturn {\n  // Trade identification\n  tradeId: `TRADE_${contractId}_${Date.now()}`,\n  contractId: contractId,\n  \n  // Original parameters\n  originalStake: Number(originalStake),\n  tradeSymbol: tradeSymbol,\n  duration: Number(duration),\n  position: position,\n  \n  // Trade execution data\n  buyPrice: Number(tradeData.buyPrice),\n  payout: Number(tradeData.payout),\n  balanceAfter: Number(tradeData.balanceAfter),\n  \n  // Timing information\n  purchaseTime: purchaseTime * 1000, // Convert to milliseconds\n  expectedExpiryTime: expectedExpiryTime,\n  waitTime: waitTime,\n  waitTimeSeconds: Math.ceil(waitTime / 1000), // For the Wait node\n  \n  // Execution metadata\n  executionTimestamp: new Date().toISOString(),\n  transactionId: tradeData.transactionId,\n  longcode: tradeData.longcode,\n  shortcode: tradeData.shortcode,\n  \n  // Status\n  status: 'executed',\n  message: 'Trade executed successfully - monitoring for completion',\n  \n  // Calculate initial commission\n  actualBrokerCommission: Number(originalStake - tradeData.buyPrice),\n  \n  // Additional data for processing\n  profitPercentage: inputData.profitPercentage || 0,\n  \n  // Retry tracking\n  retryCount: 0,\n  maxRetries: 2\n};"
+      },
+      "id": "0fafb4cd-0b2a-4c4f-ac20-67508a5ee086",
+      "name": "Store Trade Execution Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.waitTimeSeconds }}",
+        "unit": "seconds"
+      },
+      "id": "wait-for-expiry",
+      "name": "Wait for Trade Expiry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://deriv-proxy-service-2.onrender.com/api/trading/contract/{{$json.contractId}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "secure-production-key-2025"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -16,
+        1008
+      ],
+      "id": "check-trade-status-1",
+      "name": "Check Trade Status (1st)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "trade-completed-condition",
+              "leftValue": "={{ $json.success && $json.data && ($json.data.isExpired || $json.data.isSold || $json.data.status === 'won' || $json.data.status === 'lost') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        168,
+        1008
+      ],
+      "id": "check-if-completed-1",
+      "name": "Check if Trade Completed (1st)"
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "wait-retry",
+      "name": "Wait for Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        168,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://deriv-proxy-service-2.onrender.com/api/trading/contract/{{ $input.all()[0].json.contractId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "secure-production-key-2025"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        352,
+        1200
+      ],
+      "id": "check-trade-status-2",
+      "name": "Check Trade Status (2nd)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "trade-completed-condition-2",
+              "leftValue": "={{ $json.success && $json.data && ($json.data.isExpired || $json.data.isSold || $json.data.status === 'won' || $json.data.status === 'lost') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        536,
+        1200
+      ],
+      "id": "check-if-completed-2",
+      "name": "Check if Trade Completed (2nd)"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process completed trade result\nconst statusResponse = $json;\nconst originalTradeData = $input.all()[0].json;\n\nif (!statusResponse || !statusResponse.success || !statusResponse.data) {\n  throw new Error(\"Invalid contract status response\");\n}\n\nconst contract = statusResponse.data;\nconst contractId = originalTradeData.contractId;\n\nconsole.log(`\u2705 Trade ${contractId} completed with status: ${contract.status}`);\nconsole.log(`Profit: ${contract.profit}, Payout: ${contract.payout}`);\n\n// Extract real results\nconst profit = contract.profit || 0;\nconst payout = contract.payout || 0;\nconst buyPrice = contract.buyPrice || originalTradeData.buyPrice;\nconst tradeWon = profit > 0;\n\n// Calculate accurate values\nconst actualPayout = tradeWon ? payout : 0;\nconst actualLoss = tradeWon ? 0 : originalTradeData.originalStake;\nconst netProfit = tradeWon ? (actualPayout - originalTradeData.originalStake) : -originalTradeData.originalStake;\nconst actualBrokerCommission = originalTradeData.originalStake - buyPrice;\n\nreturn {\n  // Trade identification\n  tradeId: originalTradeData.tradeId,\n  contractId: contractId,\n  \n  // Original parameters\n  originalStake: originalTradeData.originalStake,\n  tradeSymbol: originalTradeData.tradeSymbol,\n  duration: originalTradeData.duration,\n  position: originalTradeData.position,\n  \n  // Trade execution\n  buyPrice: Number(buyPrice),\n  \n  // Trade results\n  tradeWon: tradeWon,\n  actualPayout: Number(actualPayout),\n  actualLoss: Number(actualLoss),\n  profit: Number(profit),\n  netProfit: Number(netProfit),\n  actualBrokerCommission: Number(actualBrokerCommission),\n  \n  // Metadata\n  tradeResult: tradeWon ? \"WIN\" : \"LOSS\",\n  finalTimestamp: new Date().toISOString(),\n  \n  // Contract details\n  entrySpot: contract.entrySpot,\n  exitSpot: contract.exitSpot,\n  currentSpot: contract.currentSpot,\n  longcode: contract.longcode || originalTradeData.longcode,\n  shortcode: contract.shortcode || originalTradeData.shortcode,\n  \n  // Additional data for notifications\n  profitPercentage: originalTradeData.profitPercentage || 0,\n  \n  // Completion metadata\n  completionMethod: 'polling',\n  timestamp: originalTradeData.executionTimestamp\n};"
+      },
+      "id": "process-completed-trade",
+      "name": "Process Completed Trade",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        720,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "6130097075",
+        "text": "=\u26a0\ufe0f **TRADE MONITORING TIMEOUT**\n\nContract: {{$json.contractId}}\nSymbol: {{$json.tradeSymbol}}\nPosition: {{$json.position}}\nStake: ${{$json.originalStake}}\n\n\u274c Trade did not complete within expected timeframe after 2 retry attempts.\n\n\ud83d\udd0d **Manual Check Required**\nPlease check the trade status manually in your Deriv account.\n\n\u23f0 {{new Date().toISOString()}}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        536,
+        1400
+      ],
+      "id": "timeout-notification",
+      "name": "Trade Timeout Notification",
+      "credentials": {
+        "telegramApi": {
+          "id": "6d5bIxnSqIv9tsK6",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Parse chat input1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse chat input1": {
+      "main": [
+        [
+          {
+            "node": "Generate Profit Percentage1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Trade Telegram Notification1": {
+      "main": [
+        []
+      ]
+    },
+    "Log to Google Sheets1": {
+      "main": [
+        [
+          {
+            "node": "Track Commissions1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Profit Percentage1": {
+      "main": [
+        [
+          {
+            "node": "Calculate Commissions1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Commissions1": {
+      "main": [
+        [
+          {
+            "node": "Pre-Trade Telegram Notification1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Execute Deriv Trade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Deriv Trade": {
+      "main": [
+        [
+          {
+            "node": "Store Trade Execution Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Trade Execution Data": {
+      "main": [
+        [
+          {
+            "node": "Wait for Trade Expiry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Trade Expiry": {
+      "main": [
+        [
+          {
+            "node": "Check Trade Status (1st)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Trade Status (1st)": {
+      "main": [
+        [
+          {
+            "node": "Check if Trade Completed (1st)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Trade Completed (1st)": {
+      "main": [
+        [
+          {
+            "node": "Process Completed Trade",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait for Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Retry": {
+      "main": [
+        [
+          {
+            "node": "Check Trade Status (2nd)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Trade Status (2nd)": {
+      "main": [
+        [
+          {
+            "node": "Check if Trade Completed (2nd)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Trade Completed (2nd)": {
+      "main": [
+        [
+          {
+            "node": "Process Completed Trade",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trade Timeout Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Completed Trade": {
+      "main": [
+        [
+          {
+            "node": "Post-Trade Telegram Notification1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to Google Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "7613ee87-a001-479a-8e79-e60e9f6f2fd0",
+  "meta": {
+    "instanceId": "a52f30734bd41425779371056ba841f775f3fee19f36ca15e7463d96a245e4a2"
+  },
+  "id": "yHJUBby9KDcJYzzh",
+  "tags": []
+}
