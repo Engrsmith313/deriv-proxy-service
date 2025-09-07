@@ -33,6 +33,14 @@ class Config {
             fixedDurationUnit: process.env.FIXED_DURATION_UNIT || 's',
             allowedContractTypes: (process.env.ALLOWED_CONTRACT_TYPES || 'CALL,PUT').split(',')
         };
+        this.websocket = {
+            enabled: process.env.WEBSOCKET_ENABLED !== 'false',
+            port: parseInt(process.env.WEBSOCKET_PORT || '3001', 10),
+            heartbeatInterval: parseInt(process.env.WEBSOCKET_HEARTBEAT_INTERVAL || '30000', 10),
+            clientTimeout: parseInt(process.env.WEBSOCKET_CLIENT_TIMEOUT || '60000', 10),
+            maxClients: parseInt(process.env.WEBSOCKET_MAX_CLIENTS || '100', 10),
+            requireAuth: process.env.WEBSOCKET_REQUIRE_AUTH !== 'false'
+        };
     }
     static getInstance() {
         if (!Config.instance) {

@@ -1,9 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { createServer } from 'http';
 import { config } from './config';
 import { DerivApiService } from './services/derivApi';
 import { TradingService } from './services/tradingService';
+import { WebSocketService } from './services/webSocketService';
 import { createTradingRoutes } from './routes/trading';
 import { createStatusRoutes } from './routes/status';
 import { authenticateApiKey } from './middleware/auth';
@@ -13,15 +15,25 @@ import path from 'path';
 
 class DerivProxyServer {
   private app: express.Application;
+  private httpServer: any;
   private derivApi: DerivApiService;
   private tradingService: TradingService;
+  private webSocketService: WebSocketService;
   private server: any;
 
   constructor() {
     this.app = express();
+    this.httpServer = createServer(this.app);
     this.derivApi = new DerivApiService(config.deriv);
-    this.tradingService = new TradingService(this.derivApi);
-    
+    this.webSocketService = new WebSocketService({
+      port: config.websocket.port,
+      heartbeatInterval: config.websocket.heartbeatInterval,
+      clientTimeout: config.websocket.clientTimeout,
+      maxClients: config.websocket.maxClients,
+      requireAuth: config.websocket.requireAuth
+    });
+    this.tradingService = new TradingService(this.derivApi, this.webSocketService);
+
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();
@@ -74,7 +86,7 @@ class DerivProxyServer {
 
   private setupRoutes(): void {
     // Public routes (no authentication required)
-    this.app.use('/api/status', createStatusRoutes(this.tradingService));
+    this.app.use('/api/status', createStatusRoutes(this.tradingService, this.webSocketService));
 
     // Protected routes (authentication required)
     this.app.use('/api/trading', authenticateApiKey, createTradingRoutes(this.tradingService));
@@ -89,14 +101,21 @@ class DerivProxyServer {
           status: '/api/status',
           trading: '/api/trading',
           health: '/api/status/health',
+          websocket: '/api/status/websocket',
           ping: '/api/status/ping'
+        },
+        websocket: {
+          url: '/ws',
+          description: 'WebSocket endpoint for real-time trade updates',
+          authentication: 'API key required via auth message'
         },
         documentation: {
           trade: 'POST /api/trading/trade',
           balance: 'GET /api/trading/balance',
           portfolio: 'GET /api/trading/portfolio',
           contract: 'GET /api/trading/contract/:contractId',
-          activeTrades: 'GET /api/trading/active-trades'
+          activeTrades: 'GET /api/trading/active-trades',
+          websocketStatus: 'GET /api/status/websocket'
         }
       });
     });
@@ -168,7 +187,7 @@ class DerivProxyServer {
       logger.info('Successfully connected and authenticated with Deriv API');
 
       // Start HTTP server
-      this.server = this.app.listen(config.server.port, '0.0.0.0', () => {
+      this.server = this.httpServer.listen(config.server.port, '0.0.0.0', () => {
         logger.info(`Deriv Proxy Service started on port ${config.server.port}`, {
           environment: config.server.nodeEnv,
           port: config.server.port,
@@ -177,6 +196,14 @@ class DerivProxyServer {
           host: '0.0.0.0'
         });
       });
+
+      // Start WebSocket service if enabled
+      if (config.websocket.enabled) {
+        await this.webSocketService.start(this.httpServer);
+        logger.info('WebSocket service started successfully');
+      } else {
+        logger.info('WebSocket service disabled by configuration');
+      }
 
       // Handle server errors
       this.server.on('error', (error: any) => {
@@ -194,27 +221,44 @@ class DerivProxyServer {
     }
   }
 
-  private gracefulShutdown(signal: string): void {
+  private async gracefulShutdown(signal: string): Promise<void> {
     logger.info(`Graceful shutdown initiated by ${signal}`);
 
-    // Close HTTP server
-    if (this.server) {
-      this.server.close(() => {
-        logger.info('HTTP server closed');
-      });
-    }
+    try {
+      // Stop WebSocket service
+      if (this.webSocketService) {
+        await this.webSocketService.stop();
+        logger.info('WebSocket service stopped');
+      }
 
-    // Disconnect from Deriv API
-    if (this.derivApi) {
-      this.derivApi.disconnect();
-      logger.info('Deriv API connection closed');
-    }
+      // Cleanup trading service
+      if (this.tradingService) {
+        await this.tradingService.cleanup();
+        logger.info('Trading service cleaned up');
+      }
 
-    // Exit process
-    setTimeout(() => {
-      logger.info('Graceful shutdown completed');
-      process.exit(0);
-    }, 5000);
+      // Close HTTP server
+      if (this.server) {
+        this.server.close(() => {
+          logger.info('HTTP server closed');
+        });
+      }
+
+      // Disconnect from Deriv API
+      if (this.derivApi) {
+        this.derivApi.disconnect();
+        logger.info('Deriv API connection closed');
+      }
+
+      // Exit process
+      setTimeout(() => {
+        logger.info('Graceful shutdown completed');
+        process.exit(0);
+      }, 5000);
+    } catch (error) {
+      logger.error('Error during graceful shutdown:', error);
+      process.exit(1);
+    }
   }
 }
 

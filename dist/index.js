@@ -6,9 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
+const http_1 = require("http");
 const config_1 = require("./config");
 const derivApi_1 = require("./services/derivApi");
 const tradingService_1 = require("./services/tradingService");
+const webSocketService_1 = require("./services/webSocketService");
 const trading_1 = require("./routes/trading");
 const status_1 = require("./routes/status");
 const auth_1 = require("./middleware/auth");
@@ -18,8 +20,16 @@ const path_1 = __importDefault(require("path"));
 class DerivProxyServer {
     constructor() {
         this.app = (0, express_1.default)();
+        this.httpServer = (0, http_1.createServer)(this.app);
         this.derivApi = new derivApi_1.DerivApiService(config_1.config.deriv);
-        this.tradingService = new tradingService_1.TradingService(this.derivApi);
+        this.webSocketService = new webSocketService_1.WebSocketService({
+            port: config_1.config.websocket.port,
+            heartbeatInterval: config_1.config.websocket.heartbeatInterval,
+            clientTimeout: config_1.config.websocket.clientTimeout,
+            maxClients: config_1.config.websocket.maxClients,
+            requireAuth: config_1.config.websocket.requireAuth
+        });
+        this.tradingService = new tradingService_1.TradingService(this.derivApi, this.webSocketService);
         this.setupMiddleware();
         this.setupRoutes();
         this.setupErrorHandling();
@@ -61,7 +71,7 @@ class DerivProxyServer {
         });
     }
     setupRoutes() {
-        this.app.use('/api/status', (0, status_1.createStatusRoutes)(this.tradingService));
+        this.app.use('/api/status', (0, status_1.createStatusRoutes)(this.tradingService, this.webSocketService));
         this.app.use('/api/trading', auth_1.authenticateApiKey, (0, trading_1.createTradingRoutes)(this.tradingService));
         this.app.get('/', (req, res) => {
             res.json({
@@ -72,14 +82,21 @@ class DerivProxyServer {
                     status: '/api/status',
                     trading: '/api/trading',
                     health: '/api/status/health',
+                    websocket: '/api/status/websocket',
                     ping: '/api/status/ping'
+                },
+                websocket: {
+                    url: '/ws',
+                    description: 'WebSocket endpoint for real-time trade updates',
+                    authentication: 'API key required via auth message'
                 },
                 documentation: {
                     trade: 'POST /api/trading/trade',
                     balance: 'GET /api/trading/balance',
                     portfolio: 'GET /api/trading/portfolio',
                     contract: 'GET /api/trading/contract/:contractId',
-                    activeTrades: 'GET /api/trading/active-trades'
+                    activeTrades: 'GET /api/trading/active-trades',
+                    websocketStatus: 'GET /api/status/websocket'
                 }
             });
         });
@@ -133,14 +150,22 @@ class DerivProxyServer {
             await this.derivApi.connect();
             await this.derivApi.authenticate();
             logger_1.default.info('Successfully connected and authenticated with Deriv API');
-            this.server = this.app.listen(config_1.config.server.port, () => {
+            this.server = this.httpServer.listen(config_1.config.server.port, '0.0.0.0', () => {
                 logger_1.default.info(`Deriv Proxy Service started on port ${config_1.config.server.port}`, {
                     environment: config_1.config.server.nodeEnv,
                     port: config_1.config.server.port,
                     derivUrl: config_1.config.deriv.wsUrl,
-                    isDemo: config_1.config.deriv.isDemo
+                    isDemo: config_1.config.deriv.isDemo,
+                    host: '0.0.0.0'
                 });
             });
+            if (config_1.config.websocket.enabled) {
+                await this.webSocketService.start(this.httpServer);
+                logger_1.default.info('WebSocket service started successfully');
+            }
+            else {
+                logger_1.default.info('WebSocket service disabled by configuration');
+            }
             this.server.on('error', (error) => {
                 if (error.code === 'EADDRINUSE') {
                     logger_1.default.error(`Port ${config_1.config.server.port} is already in use`);
@@ -156,21 +181,35 @@ class DerivProxyServer {
             process.exit(1);
         }
     }
-    gracefulShutdown(signal) {
+    async gracefulShutdown(signal) {
         logger_1.default.info(`Graceful shutdown initiated by ${signal}`);
-        if (this.server) {
-            this.server.close(() => {
-                logger_1.default.info('HTTP server closed');
-            });
+        try {
+            if (this.webSocketService) {
+                await this.webSocketService.stop();
+                logger_1.default.info('WebSocket service stopped');
+            }
+            if (this.tradingService) {
+                await this.tradingService.cleanup();
+                logger_1.default.info('Trading service cleaned up');
+            }
+            if (this.server) {
+                this.server.close(() => {
+                    logger_1.default.info('HTTP server closed');
+                });
+            }
+            if (this.derivApi) {
+                this.derivApi.disconnect();
+                logger_1.default.info('Deriv API connection closed');
+            }
+            setTimeout(() => {
+                logger_1.default.info('Graceful shutdown completed');
+                process.exit(0);
+            }, 5000);
         }
-        if (this.derivApi) {
-            this.derivApi.disconnect();
-            logger_1.default.info('Deriv API connection closed');
+        catch (error) {
+            logger_1.default.error('Error during graceful shutdown:', error);
+            process.exit(1);
         }
-        setTimeout(() => {
-            logger_1.default.info('Graceful shutdown completed');
-            process.exit(0);
-        }, 5000);
     }
 }
 const server = new DerivProxyServer();

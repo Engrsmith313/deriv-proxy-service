@@ -7,9 +7,14 @@ exports.TradingService = void 0;
 const config_1 = require("../config");
 const logger_1 = __importDefault(require("../utils/logger"));
 class TradingService {
-    constructor(derivApi) {
+    constructor(derivApi, webSocketService) {
+        this.webSocketService = null;
         this.activeTrades = new Map();
+        this.contractSubscriptions = new Set();
+        this.portfolioSubscribed = false;
+        this.monitoringInterval = null;
         this.derivApi = derivApi;
+        this.webSocketService = webSocketService || null;
         this.riskManagement = {
             maxStakePerTrade: config_1.config.app.maxStake,
             maxDailyLoss: config_1.config.app.maxStake * 10,
@@ -18,6 +23,7 @@ class TradingService {
             takeProfitEnabled: config_1.config.app.riskManagementEnabled
         };
         this.setupDerivApiEvents();
+        this.startTradeMonitoring();
     }
     setupDerivApiEvents() {
         this.derivApi.on('connected', () => {
@@ -25,12 +31,21 @@ class TradingService {
         });
         this.derivApi.on('disconnected', () => {
             logger_1.default.warn('Trading service: Deriv API disconnected');
+            this.portfolioSubscribed = false;
+            this.contractSubscriptions.clear();
         });
-        this.derivApi.on('authenticated', () => {
+        this.derivApi.on('authenticated', async () => {
             logger_1.default.info('Trading service: Deriv API authenticated');
+            await this.subscribeToPortfolioUpdates();
         });
         this.derivApi.on('error', (error) => {
             logger_1.default.error('Trading service: Deriv API error', error);
+        });
+        this.derivApi.on('portfolio', (message) => {
+            this.handlePortfolioUpdate(message);
+        });
+        this.derivApi.on('proposal_open_contract', (message) => {
+            this.handleContractUpdate(message);
         });
     }
     async executeTrade(tradeRequest) {
@@ -87,8 +102,11 @@ class TradingService {
                     purchaseTime: purchaseTime * 1000,
                     expiryTime: purchaseTime * 1000 + (tradeRequest.duration * 1000),
                     payout: payout,
-                    isMonitoring: true
+                    isMonitoring: true,
+                    status: 'open',
+                    balanceAfter: balanceAfter
                 });
+                await this.subscribeToContractUpdates(contractId);
                 logger_1.default.info('Trade executed successfully', {
                     contractId,
                     buyPrice,
@@ -289,6 +307,197 @@ class TradingService {
     }
     getActiveTrades() {
         return Array.from(this.activeTrades.values());
+    }
+    setWebSocketService(webSocketService) {
+        this.webSocketService = webSocketService;
+    }
+    startTradeMonitoring() {
+        this.monitoringInterval = setInterval(() => {
+            this.monitorActiveTrades();
+        }, 30000);
+        logger_1.default.info('Trade monitoring started');
+    }
+    stopTradeMonitoring() {
+        if (this.monitoringInterval) {
+            clearInterval(this.monitoringInterval);
+            this.monitoringInterval = null;
+        }
+        logger_1.default.info('Trade monitoring stopped');
+    }
+    async subscribeToPortfolioUpdates() {
+        try {
+            if (!this.portfolioSubscribed) {
+                await this.derivApi.subscribeToPortfolio();
+                this.portfolioSubscribed = true;
+                logger_1.default.info('Subscribed to portfolio updates');
+            }
+        }
+        catch (error) {
+            logger_1.default.error('Failed to subscribe to portfolio updates:', error);
+        }
+    }
+    async subscribeToContractUpdates(contractId) {
+        try {
+            if (!this.contractSubscriptions.has(contractId)) {
+                await this.derivApi.subscribeToContract(contractId);
+                this.contractSubscriptions.add(contractId);
+                logger_1.default.debug('Subscribed to contract updates', { contractId });
+            }
+        }
+        catch (error) {
+            logger_1.default.error('Failed to subscribe to contract updates:', error, { contractId });
+        }
+    }
+    handlePortfolioUpdate(message) {
+        if (message.portfolio && message.portfolio.contracts) {
+            message.portfolio.contracts.forEach((contract) => {
+                this.updateTradeFromPortfolio(contract);
+            });
+        }
+    }
+    handleContractUpdate(message) {
+        if (message.proposal_open_contract) {
+            this.updateTradeFromContract(message.proposal_open_contract);
+        }
+    }
+    updateTradeFromPortfolio(contract) {
+        const contractId = contract.contract_id;
+        const activeTrade = this.activeTrades.get(contractId);
+        if (activeTrade) {
+            const wasOpen = activeTrade.status === 'open' || !activeTrade.status;
+            activeTrade.currentSpot = contract.current_spot;
+            activeTrade.profit = contract.profit;
+            activeTrade.profitPercentage = contract.profit_percentage;
+            activeTrade.entrySpot = contract.entry_spot;
+            activeTrade.exitSpot = contract.exit_spot;
+            let newStatus = 'open';
+            if (contract.is_sold) {
+                newStatus = 'sold';
+                activeTrade.sellTime = contract.sell_time * 1000;
+            }
+            else if (contract.is_expired) {
+                newStatus = contract.profit > 0 ? 'won' : 'lost';
+            }
+            activeTrade.status = newStatus;
+            if (wasOpen && newStatus !== 'open') {
+                this.broadcastTradeResult(activeTrade);
+                setTimeout(() => {
+                    this.activeTrades.delete(contractId);
+                }, 5000);
+            }
+            else if (newStatus === 'open') {
+                this.broadcastTradeStatus(activeTrade);
+            }
+        }
+    }
+    updateTradeFromContract(contract) {
+        const contractId = contract.contract_id;
+        const activeTrade = this.activeTrades.get(contractId);
+        if (activeTrade) {
+            const wasOpen = activeTrade.status === 'open' || !activeTrade.status;
+            activeTrade.currentSpot = contract.current_spot;
+            activeTrade.profit = contract.profit;
+            activeTrade.profitPercentage = contract.profit_percentage;
+            activeTrade.entrySpot = contract.entry_spot;
+            activeTrade.exitSpot = contract.exit_spot;
+            let newStatus = 'open';
+            if (contract.is_sold) {
+                newStatus = 'sold';
+                activeTrade.sellTime = contract.sell_time * 1000;
+            }
+            else if (contract.is_expired) {
+                newStatus = contract.profit > 0 ? 'won' : 'lost';
+            }
+            activeTrade.status = newStatus;
+            if (wasOpen && newStatus !== 'open') {
+                this.broadcastTradeResult(activeTrade);
+                setTimeout(() => {
+                    this.activeTrades.delete(contractId);
+                }, 5000);
+            }
+            else if (newStatus === 'open') {
+                this.broadcastTradeStatus(activeTrade);
+            }
+        }
+    }
+    async monitorActiveTrades() {
+        const now = Date.now();
+        const tradesToCheck = [];
+        this.activeTrades.forEach((trade) => {
+            if (trade.expiryTime <= now && (!trade.status || trade.status === 'open')) {
+                tradesToCheck.push(trade);
+            }
+        });
+        for (const trade of tradesToCheck) {
+            try {
+                const contractDetails = await this.derivApi.getContractDetails(trade.contractId);
+                if (contractDetails.proposal_open_contract) {
+                    this.updateTradeFromContract(contractDetails);
+                }
+            }
+            catch (error) {
+                logger_1.default.error('Error checking contract details:', error, { contractId: trade.contractId });
+            }
+        }
+    }
+    broadcastTradeResult(trade) {
+        if (!this.webSocketService)
+            return;
+        const tradeResult = {
+            contractId: trade.contractId,
+            symbol: trade.symbol,
+            contractType: trade.contractType,
+            stake: trade.stake,
+            buyPrice: trade.entryPrice,
+            payout: trade.payout,
+            profit: trade.profit || 0,
+            profitPercentage: trade.profitPercentage || 0,
+            status: trade.status,
+            entrySpot: trade.entrySpot || 0,
+            exitSpot: trade.exitSpot,
+            currentSpot: trade.currentSpot || 0,
+            purchaseTime: trade.purchaseTime,
+            expiryTime: trade.expiryTime,
+            sellTime: trade.sellTime,
+            longcode: '',
+            shortcode: '',
+            balanceAfter: trade.balanceAfter || 0
+        };
+        this.webSocketService.broadcastTradeResult(tradeResult);
+        logger_1.default.info('Trade result broadcasted', {
+            contractId: trade.contractId,
+            status: trade.status,
+            profit: trade.profit
+        });
+    }
+    broadcastTradeStatus(trade) {
+        if (!this.webSocketService)
+            return;
+        const tradeStatus = {
+            contractId: trade.contractId,
+            status: trade.status,
+            currentSpot: trade.currentSpot,
+            profit: trade.profit,
+            profitPercentage: trade.profitPercentage,
+            timestamp: Date.now()
+        };
+        this.webSocketService.broadcastTradeStatus(tradeStatus);
+    }
+    async cleanup() {
+        this.stopTradeMonitoring();
+        try {
+            if (this.portfolioSubscribed) {
+                await this.derivApi.unsubscribeFromPortfolio();
+                this.portfolioSubscribed = false;
+            }
+            if (this.contractSubscriptions.size > 0) {
+                await this.derivApi.unsubscribeFromContract(0);
+                this.contractSubscriptions.clear();
+            }
+        }
+        catch (error) {
+            logger_1.default.error('Error during trading service cleanup:', error);
+        }
     }
 }
 exports.TradingService = TradingService;

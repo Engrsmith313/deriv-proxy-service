@@ -125,6 +125,41 @@ class DerivApiService extends events_1.EventEmitter {
         };
         return this.sendRequest(request);
     }
+    async subscribeToContract(contractId) {
+        this.ensureAuthenticated();
+        const request = {
+            proposal_open_contract: 1,
+            contract_id: contractId,
+            subscribe: 1,
+            req_id: this.requestId++
+        };
+        return this.sendRequest(request);
+    }
+    async unsubscribeFromContract(contractId) {
+        this.ensureAuthenticated();
+        const request = {
+            forget_all: 'proposal_open_contract',
+            req_id: this.requestId++
+        };
+        return this.sendRequest(request);
+    }
+    async subscribeToPortfolio() {
+        this.ensureAuthenticated();
+        const request = {
+            portfolio: 1,
+            subscribe: 1,
+            req_id: this.requestId++
+        };
+        return this.sendRequest(request);
+    }
+    async unsubscribeFromPortfolio() {
+        this.ensureAuthenticated();
+        const request = {
+            forget_all: 'portfolio',
+            req_id: this.requestId++
+        };
+        return this.sendRequest(request);
+    }
     async buyContract(params) {
         this.ensureAuthenticated();
         const proposalRequest = {

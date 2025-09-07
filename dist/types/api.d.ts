@@ -95,4 +95,100 @@ export interface ValidationError extends ApiError {
         message: string;
     }>;
 }
+export interface WebSocketMessage {
+    type: string;
+    timestamp: number;
+    data?: any;
+}
+export interface WebSocketAuthMessage extends WebSocketMessage {
+    type: 'auth';
+    data: {
+        apiKey: string;
+    };
+}
+export interface WebSocketAuthResponse extends WebSocketMessage {
+    type: 'auth_response';
+    data: {
+        success: boolean;
+        message: string;
+        clientId?: string;
+    };
+}
+export interface WebSocketTradeResultMessage extends WebSocketMessage {
+    type: 'trade_result';
+    data: {
+        contractId: number;
+        symbol: string;
+        contractType: string;
+        stake: number;
+        buyPrice: number;
+        payout: number;
+        profit?: number;
+        profitPercentage?: number;
+        status: 'open' | 'won' | 'lost' | 'sold';
+        entrySpot?: number;
+        exitSpot?: number;
+        currentSpot?: number;
+        purchaseTime: number;
+        expiryTime: number;
+        sellTime?: number;
+        longcode: string;
+        shortcode: string;
+        balanceAfter?: number;
+    };
+}
+export interface WebSocketTradeStatusMessage extends WebSocketMessage {
+    type: 'trade_status';
+    data: {
+        contractId: number;
+        status: 'open' | 'won' | 'lost' | 'sold';
+        currentSpot?: number;
+        profit?: number;
+        profitPercentage?: number;
+    };
+}
+export interface WebSocketErrorMessage extends WebSocketMessage {
+    type: 'error';
+    data: {
+        code: string;
+        message: string;
+        details?: any;
+    };
+}
+export interface WebSocketHeartbeatMessage extends WebSocketMessage {
+    type: 'heartbeat';
+    data: {
+        serverTime: number;
+    };
+}
+export interface WebSocketSubscriptionMessage extends WebSocketMessage {
+    type: 'subscribe';
+    data: {
+        events: string[];
+    };
+}
+export interface WebSocketUnsubscriptionMessage extends WebSocketMessage {
+    type: 'unsubscribe';
+    data: {
+        events: string[];
+    };
+}
+export type WebSocketIncomingMessage = WebSocketAuthMessage | WebSocketSubscriptionMessage | WebSocketUnsubscriptionMessage;
+export type WebSocketOutgoingMessage = WebSocketAuthResponse | WebSocketTradeResultMessage | WebSocketTradeStatusMessage | WebSocketErrorMessage | WebSocketHeartbeatMessage;
+export interface WebSocketClient {
+    id: string;
+    socket: any;
+    isAuthenticated: boolean;
+    apiKey?: string;
+    connectedAt: number;
+    lastActivity: number;
+    subscriptions: Set<string>;
+}
+export interface WebSocketServerConfig {
+    port: number;
+    heartbeatInterval: number;
+    clientTimeout: number;
+    maxClients: number;
+    requireAuth: boolean;
+}
 //# sourceMappingURL=api.d.ts.map

@@ -164,6 +164,53 @@ export class DerivApiService extends EventEmitter {
     return this.sendRequest(request);
   }
 
+  public async subscribeToContract(contractId: number): Promise<any> {
+    this.ensureAuthenticated();
+
+    const request = {
+      proposal_open_contract: 1,
+      contract_id: contractId,
+      subscribe: 1,
+      req_id: this.requestId++
+    };
+
+    return this.sendRequest(request);
+  }
+
+  public async unsubscribeFromContract(contractId: number): Promise<any> {
+    this.ensureAuthenticated();
+
+    const request = {
+      forget_all: 'proposal_open_contract',
+      req_id: this.requestId++
+    };
+
+    return this.sendRequest(request);
+  }
+
+  public async subscribeToPortfolio(): Promise<any> {
+    this.ensureAuthenticated();
+
+    const request = {
+      portfolio: 1,
+      subscribe: 1,
+      req_id: this.requestId++
+    };
+
+    return this.sendRequest(request);
+  }
+
+  public async unsubscribeFromPortfolio(): Promise<any> {
+    this.ensureAuthenticated();
+
+    const request = {
+      forget_all: 'portfolio',
+      req_id: this.requestId++
+    };
+
+    return this.sendRequest(request);
+  }
+
   public async buyContract(params: {
     contractType: string;
     symbol: string;

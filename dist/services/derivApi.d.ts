@@ -18,6 +18,10 @@ export declare class DerivApiService extends EventEmitter {
     getPortfolio(): Promise<PortfolioResponse>;
     getTicks(symbol: string): Promise<any>;
     getContractDetails(contractId: number): Promise<any>;
+    subscribeToContract(contractId: number): Promise<any>;
+    unsubscribeFromContract(contractId: number): Promise<any>;
+    subscribeToPortfolio(): Promise<any>;
+    unsubscribeFromPortfolio(): Promise<any>;
     buyContract(params: {
         contractType: string;
         symbol: string;

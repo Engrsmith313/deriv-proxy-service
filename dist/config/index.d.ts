@@ -18,6 +18,14 @@ export declare class Config {
         fixedDurationUnit: string;
         allowedContractTypes: string[];
     };
+    readonly websocket: {
+        enabled: boolean;
+        port: number;
+        heartbeatInterval: number;
+        clientTimeout: number;
+        maxClients: number;
+        requireAuth: boolean;
+    };
     private constructor();
     static getInstance(): Config;
     private validateEnvVars;

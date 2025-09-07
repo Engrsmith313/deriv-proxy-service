@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createStatusRoutes = createStatusRoutes;
 const express_1 = require("express");
 const logger_1 = __importDefault(require("../utils/logger"));
-function createStatusRoutes(tradingService) {
+function createStatusRoutes(tradingService, webSocketService) {
     const router = (0, express_1.Router)();
     const startTime = Date.now();
     router.get('/health', (req, res) => {
@@ -60,6 +60,13 @@ function createStatusRoutes(tradingService) {
                         activeTrades: activeTrades.length,
                         totalTradesMonitored: activeTrades.length
                     },
+                    websocket: webSocketService ? {
+                        connectedClients: webSocketService.getConnectedClients(),
+                        authenticatedClients: webSocketService.getAuthenticatedClients()
+                    } : {
+                        enabled: false,
+                        message: 'WebSocket service not available'
+                    },
                     system: {
                         nodeVersion: process.version,
                         platform: process.platform,
@@ -82,6 +89,46 @@ function createStatusRoutes(tradingService) {
                 success: false,
                 error: 'Internal server error',
                 message: 'An unexpected error occurred while retrieving status'
+            });
+        }
+    });
+    router.get('/websocket', (req, res) => {
+        try {
+            if (!webSocketService) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'WebSocket service not available',
+                    message: 'WebSocket functionality is not enabled'
+                });
+            }
+            const clientInfo = webSocketService.getClientInfo();
+            const wsStatus = {
+                success: true,
+                data: {
+                    enabled: true,
+                    connectedClients: webSocketService.getConnectedClients(),
+                    authenticatedClients: webSocketService.getAuthenticatedClients(),
+                    clients: clientInfo.map(client => ({
+                        id: client.id,
+                        isAuthenticated: client.isAuthenticated,
+                        connectedAt: new Date(client.connectedAt).toISOString(),
+                        subscriptions: client.subscriptions
+                    }))
+                }
+            };
+            logger_1.default.debug('WebSocket status requested', {
+                connectedClients: wsStatus.data.connectedClients,
+                authenticatedClients: wsStatus.data.authenticatedClients,
+                ip: req.ip
+            });
+            return res.status(200).json(wsStatus);
+        }
+        catch (error) {
+            logger_1.default.error('Error in WebSocket status endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'Internal server error',
+                message: 'An unexpected error occurred while retrieving WebSocket status'
             });
         }
     });

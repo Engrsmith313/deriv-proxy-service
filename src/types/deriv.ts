@@ -222,4 +222,45 @@ export interface ActiveTrade {
   expiryTime: number;
   payout: number;
   isMonitoring: boolean;
+  // Enhanced fields for WebSocket notifications
+  currentSpot?: number;
+  profit?: number;
+  profitPercentage?: number;
+  status?: 'open' | 'won' | 'lost' | 'sold';
+  entrySpot?: number;
+  exitSpot?: number;
+  sellTime?: number;
+  balanceAfter?: number;
+}
+
+// Trade result event for WebSocket broadcasting
+export interface TradeResultEvent {
+  contractId: number;
+  symbol: string;
+  contractType: string;
+  stake: number;
+  buyPrice: number;
+  payout: number;
+  profit: number;
+  profitPercentage: number;
+  status: 'won' | 'lost' | 'sold';
+  entrySpot: number;
+  exitSpot?: number;
+  currentSpot: number;
+  purchaseTime: number;
+  expiryTime: number;
+  sellTime?: number;
+  longcode: string;
+  shortcode: string;
+  balanceAfter: number;
+}
+
+// Trade status update event
+export interface TradeStatusEvent {
+  contractId: number;
+  status: 'open' | 'won' | 'lost' | 'sold';
+  currentSpot?: number;
+  profit?: number;
+  profitPercentage?: number;
+  timestamp: number;
 }

@@ -26,6 +26,15 @@ export class Config {
     allowedContractTypes: string[];
   };
 
+  public readonly websocket: {
+    enabled: boolean;
+    port: number;
+    heartbeatInterval: number;
+    clientTimeout: number;
+    maxClients: number;
+    requireAuth: boolean;
+  };
+
   private constructor() {
     // Validate required environment variables
     this.validateEnvVars();
@@ -56,6 +65,15 @@ export class Config {
       fixedDuration: parseInt(process.env.FIXED_DURATION || '15', 10),
       fixedDurationUnit: process.env.FIXED_DURATION_UNIT || 's',
       allowedContractTypes: (process.env.ALLOWED_CONTRACT_TYPES || 'CALL,PUT').split(',')
+    };
+
+    this.websocket = {
+      enabled: process.env.WEBSOCKET_ENABLED !== 'false', // Default to true
+      port: parseInt(process.env.WEBSOCKET_PORT || '3001', 10),
+      heartbeatInterval: parseInt(process.env.WEBSOCKET_HEARTBEAT_INTERVAL || '30000', 10),
+      clientTimeout: parseInt(process.env.WEBSOCKET_CLIENT_TIMEOUT || '60000', 10),
+      maxClients: parseInt(process.env.WEBSOCKET_MAX_CLIENTS || '100', 10),
+      requireAuth: process.env.WEBSOCKET_REQUIRE_AUTH !== 'false' // Default to true
     };
   }
 
