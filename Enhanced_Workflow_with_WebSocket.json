@@ -1,0 +1,142 @@
+{
+  "name": "Enhanced Trading Workflow with WebSocket",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "wss://deriv-proxy-service-2.onrender.com/ws",
+        "options": {
+          "reconnect": true,
+          "reconnectInterval": 5000
+        }
+      },
+      "type": "n8n-nodes-base.webSocket",
+      "typeVersion": 1,
+      "position": [400, 1200],
+      "id": "websocket-connection",
+      "name": "WebSocket Connection"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle WebSocket connection and authentication\nconst message = $json;\n\n// If this is a connection event, send authentication\nif (message.type === 'connection' || !message.type) {\n  console.log('WebSocket connected, sending authentication...');\n  return {\n    json: {\n      type: 'auth',\n      timestamp: Date.now(),\n      data: {\n        apiKey: 'secure-production-key-2025'\n      }\n    }\n  };\n}\n\n// Pass through all other messages\nreturn { json: message };"
+      },
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [600, 1200],
+      "id": "websocket-auth-handler",
+      "name": "WebSocket Auth Handler"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "trade-result-condition",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "trade_result",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [800, 1200],
+      "id": "websocket-message-filter",
+      "name": "WebSocket Message Filter"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process real-time trade result from WebSocket\nconst wsData = $json.data;\n\nif (!wsData || !wsData.contractId) {\n  console.log('Invalid WebSocket trade result data');\n  return { json: { skip: true } };\n}\n\nconsole.log(`🎯 Real-time trade result received for contract ${wsData.contractId}`);\nconsole.log(`Status: ${wsData.status}, Profit: ${wsData.profit}`);\n\n// Format the data for Telegram notification\nconst tradeWon = wsData.status === 'won';\nconst emoji = tradeWon ? '🎉' : '😞';\nconst statusText = tradeWon ? 'TRADE WIN' : 'TRADE LOSS';\n\nreturn {\n  json: {\n    // WebSocket real-time data\n    contractId: wsData.contractId,\n    symbol: wsData.symbol,\n    contractType: wsData.contractType,\n    stake: wsData.stake,\n    buyPrice: wsData.buyPrice,\n    payout: wsData.payout,\n    profit: wsData.profit,\n    profitPercentage: wsData.profitPercentage,\n    status: wsData.status,\n    entrySpot: wsData.entrySpot,\n    exitSpot: wsData.exitSpot,\n    currentSpot: wsData.currentSpot,\n    balanceAfter: wsData.balanceAfter,\n    \n    // Formatted for notification\n    tradeWon: tradeWon,\n    emoji: emoji,\n    statusText: statusText,\n    netProfit: wsData.profit,\n    actualPayout: tradeWon ? wsData.payout : 0,\n    actualLoss: tradeWon ? 0 : wsData.stake,\n    \n    // Metadata\n    timestamp: new Date().toISOString(),\n    source: 'websocket',\n    longcode: wsData.longcode,\n    shortcode: wsData.shortcode\n  }\n};"
+      },
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1000, 1120],
+      "id": "websocket-trade-processor",
+      "name": "WebSocket Trade Processor"
+    },
+    {
+      "parameters": {
+        "chatId": "6130097075",
+        "text": "={{$json.emoji}} **{{$json.statusText}}** - REAL-TIME UPDATE\n\n📊 **Contract**: {{$json.contractId}}\n💰 **Symbol**: {{$json.symbol}}\n📈 **Type**: {{$json.contractType}}\n💵 **Stake**: ${{$json.stake}}\n💸 **Payout**: ${{$json.payout}}\n📊 **Profit**: ${{$json.profit}} ({{$json.profitPercentage}}%)\n⏰ **Entry**: {{$json.entrySpot}}\n🏁 **Exit**: {{$json.exitSpot}}\n💰 **Balance**: ${{$json.balanceAfter}}\n\n🚀 **INSTANT NOTIFICATION VIA WEBSOCKET**\n⏰ {{$json.timestamp}}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1200, 1120],
+      "id": "websocket-telegram-notification",
+      "name": "WebSocket Telegram Notification",
+      "credentials": {
+        "telegramApi": {
+          "id": "6d5bIxnSqIv9tsK6",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WebSocket Connection": {
+      "main": [
+        [
+          {
+            "node": "WebSocket Auth Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WebSocket Auth Handler": {
+      "main": [
+        [
+          {
+            "node": "WebSocket Message Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WebSocket Message Filter": {
+      "main": [
+        [
+          {
+            "node": "WebSocket Trade Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WebSocket Trade Processor": {
+      "main": [
+        [
+          {
+            "node": "WebSocket Telegram Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "enhanced-websocket-workflow"
+  },
+  "tags": ["websocket", "real-time", "trading"]
+}

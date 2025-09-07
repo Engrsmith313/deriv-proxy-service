@@ -36,12 +36,10 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@types/uuid": "^10.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
     "express": "^4.21.0",
     "helmet": "^8.0.0",
-    "uuid": "^12.0.0",
     "winston": "^3.17.0",
     "ws": "^8.18.3"
   }

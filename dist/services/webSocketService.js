@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebSocketService = void 0;
 const events_1 = require("events");
 const ws_1 = require("ws");
-const uuid_1 = require("uuid");
+const crypto_1 = require("crypto");
 const logger_1 = __importDefault(require("../utils/logger"));
 const config_1 = require("../config");
 class WebSocketService extends events_1.EventEmitter {
@@ -76,7 +76,7 @@ class WebSocketService extends events_1.EventEmitter {
         }
     }
     handleConnection(ws, request) {
-        const clientId = (0, uuid_1.v4)();
+        const clientId = (0, crypto_1.randomUUID)();
         const now = Date.now();
         if (this.clients.size >= this.config.maxClients) {
             logger_1.default.warn('WebSocket connection rejected: max clients reached', {

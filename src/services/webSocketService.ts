@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import logger from '../utils/logger';
 import { config } from '../config';
 import {
@@ -102,7 +102,7 @@ export class WebSocketService extends EventEmitter {
   }
 
   private handleConnection(ws: WebSocket, request: IncomingMessage): void {
-    const clientId = uuidv4();
+    const clientId = randomUUID();
     const now = Date.now();
 
     // Check client limit
