@@ -250,7 +250,7 @@ export class DerivApiService extends EventEmitter {
     return this.sendRequest<ContractResponse>(buyRequest);
   }
 
-  public sendRequest<T extends DerivResponse>(request: any): Promise<T> {
+  private sendRequest<T extends DerivResponse>(request: any): Promise<T> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected || !this.ws) {
         reject(new Error('Not connected to Deriv API'));

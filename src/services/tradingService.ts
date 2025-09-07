@@ -1,6 +1,5 @@
 import { DerivApiService } from './derivApi';
 import { WebSocketService } from './webSocketService';
-import { MarketSelectionService, MarketSelectionResult } from './marketSelectionService';
 import { TradeRequest, TradeResponse, BalanceResponse, PortfolioResponse, ContractDetailsResponse } from '../types/api';
 import { ActiveTrade, TradeResultEvent, TradeStatusEvent } from '../types/deriv';
 import { config } from '../config';
@@ -9,7 +8,6 @@ import logger from '../utils/logger';
 export class TradingService {
   private derivApi: DerivApiService;
   private webSocketService: WebSocketService | null = null;
-  private marketSelectionService: MarketSelectionService;
   private activeTrades = new Map<number, ActiveTrade>();
   private contractSubscriptions = new Set<number>();
   private portfolioSubscribed = false;
@@ -25,7 +23,6 @@ export class TradingService {
   constructor(derivApi: DerivApiService, webSocketService?: WebSocketService) {
     this.derivApi = derivApi;
     this.webSocketService = webSocketService || null;
-    this.marketSelectionService = new MarketSelectionService(derivApi);
     this.riskManagement = {
       maxStakePerTrade: config.app.maxStake,
       maxDailyLoss: config.app.maxStake * 10, // 10x max stake as daily loss limit
@@ -72,102 +69,47 @@ export class TradingService {
 
   public async executeTrade(tradeRequest: TradeRequest): Promise<TradeResponse> {
     try {
-      logger.info('Executing trade with comprehensive validation', {
-        originalRequest: tradeRequest,
-        minimumPayout: config.trading.minimumPayout,
-        requireIdenticalPayouts: config.trading.requireIdenticalPayouts
-      });
+      logger.info('Executing trade', tradeRequest);
 
-      // Step 1: Basic validation and contract type mapping
-      const validationResult = this.validateAndMapTradeRequest(tradeRequest);
-      if (!validationResult.success) {
-        return validationResult;
-      }
+      // Validate trade request
+      this.validateTradeRequest(tradeRequest);
 
-      const mappedRequest = validationResult.mappedRequest!;
-
-      // Step 2: Risk management checks
-      if (!this.validateTrade(mappedRequest.amount)) {
+      // Risk management checks
+      if (!this.validateTrade(tradeRequest.amount)) {
         return {
           success: false,
           error: `Trade rejected by risk management. Maximum stake per trade: $${this.riskManagement.maxStakePerTrade}`,
-          message: 'Risk management validation failed',
-          validationDetails: {
-            stage: 'risk_management',
-            maxStakePerTrade: this.riskManagement.maxStakePerTrade,
-            requestedAmount: mappedRequest.amount
-          }
+          message: 'Risk management validation failed'
         };
       }
 
-      // Step 3: Connection check
       if (!this.derivApi.isConnectedAndAuthenticated()) {
         return {
           success: false,
           error: 'Not connected to Deriv API',
-          message: 'Connection error',
-          validationDetails: {
-            stage: 'connection_check'
-          }
+          message: 'Connection error'
         };
       }
 
-      // Step 4: Balance check
+      // Check balance
       const balanceResponse = await this.derivApi.getBalance();
       const balance = balanceResponse?.balance?.balance || 0;
-      if (balance < mappedRequest.amount) {
+      if (balance < tradeRequest.amount) {
         return {
           success: false,
           error: 'Insufficient balance for this trade',
-          message: `Current balance: $${balance}, Required: $${mappedRequest.amount}`,
-          validationDetails: {
-            stage: 'balance_check',
-            currentBalance: balance,
-            requiredAmount: mappedRequest.amount
-          }
+          message: `Current balance: $${balance}, Required: $${tradeRequest.amount}`
         };
       }
 
-      // Step 5: Market selection and payout validation
-      const marketSelection = await this.marketSelectionService.selectOptimalMarket(
-        mappedRequest.amount,
-        mappedRequest.duration,
-        mappedRequest.durationUnit || 't'
-      );
-
-      if (!marketSelection.success || !marketSelection.selectedMarket) {
-        return {
-          success: false,
-          error: marketSelection.error || 'No suitable market found',
-          message: marketSelection.message,
-          validationDetails: {
-            stage: 'market_selection',
-            availableMarkets: marketSelection.availableMarkets?.length || 0,
-            selectionReason: marketSelection.selectionReason,
-            minimumPayoutRequired: config.trading.minimumPayout,
-            requireIdenticalPayouts: config.trading.requireIdenticalPayouts
-          }
-        };
-      }
-
-      // Step 6: Execute the trade with selected market
-      const selectedMarket = marketSelection.selectedMarket;
+      // Execute the trade
       const tradeParams = {
-        contractType: mappedRequest.contractType,
-        symbol: selectedMarket.symbol,
-        amount: mappedRequest.amount,
-        duration: mappedRequest.duration,
-        durationUnit: mappedRequest.durationUnit || 't'
+        contractType: tradeRequest.contractType,
+        symbol: tradeRequest.symbol,
+        amount: tradeRequest.amount,
+        duration: tradeRequest.duration,
+        durationUnit: tradeRequest.durationUnit || 's'
       };
-
-      logger.info('Executing trade with selected market', {
-        selectedMarket: selectedMarket.symbol,
-        displayName: selectedMarket.displayName,
-        risePayoutPercentage: selectedMarket.risePayoutPercentage,
-        fallPayoutPercentage: selectedMarket.fallPayoutPercentage,
-        selectionReason: marketSelection.selectionReason,
-        tradeParams
-      });
 
       const result = await this.derivApi.buyContract(tradeParams);
 
@@ -200,17 +142,11 @@ export class TradingService {
         // Subscribe to contract updates for real-time monitoring
         await this.subscribeToContractUpdates(contractId);
 
-        logger.info('Trade executed successfully with market validation', {
+        logger.info('Trade executed successfully', {
           contractId,
           buyPrice,
           payout,
-          balanceAfter,
-          selectedMarket: selectedMarket.symbol,
-          marketDisplayName: selectedMarket.displayName,
-          payoutPercentages: {
-            rise: selectedMarket.risePayoutPercentage,
-            fall: selectedMarket.fallPayoutPercentage
-          }
+          balanceAfter
         });
 
         return {
@@ -224,33 +160,9 @@ export class TradingService {
             longcode,
             shortcode,
             purchaseTime,
-            startTime,
-            // Enhanced market information
-            selectedMarket: {
-              symbol: selectedMarket.symbol,
-              displayName: selectedMarket.displayName,
-              risePayoutPercentage: selectedMarket.risePayoutPercentage,
-              fallPayoutPercentage: selectedMarket.fallPayoutPercentage,
-              averagePayoutPercentage: selectedMarket.averagePayoutPercentage,
-              selectionReason: marketSelection.selectionReason
-            },
-            contractTypeMapping: {
-              original: tradeRequest.contractType,
-              mapped: mappedRequest.contractType
-            }
+            startTime
           },
-          message: `Trade executed successfully on ${selectedMarket.displayName} with ${selectedMarket.averagePayoutPercentage.toFixed(2)}% payout`,
-          marketSelection: {
-            selectedMarket: selectedMarket.symbol,
-            selectionReason: marketSelection.selectionReason,
-            totalMarketsAnalyzed: marketSelection.availableMarkets?.length || 0,
-            payoutDetails: {
-              rise: selectedMarket.risePayoutPercentage,
-              fall: selectedMarket.fallPayoutPercentage,
-              meetsMinimumPayout: selectedMarket.meetsMinimumPayout,
-              hasIdenticalPayouts: selectedMarket.hasIdenticalPayouts
-            }
-          }
+          message: 'Trade executed successfully'
         };
       } else {
         return {
@@ -400,142 +312,26 @@ export class TradingService {
     }
   }
 
-  private validateAndMapTradeRequest(tradeRequest: TradeRequest): {
-    success: boolean;
-    error?: string;
-    message?: string;
-    mappedRequest?: TradeRequest;
-    validationDetails?: any;
-  } {
-    try {
-      // Basic field validation
-      if (!tradeRequest.symbol || typeof tradeRequest.symbol !== 'string') {
-        return {
-          success: false,
-          error: 'Invalid symbol',
-          message: 'Symbol is required and must be a string',
-          validationDetails: { stage: 'basic_validation', field: 'symbol' }
-        };
-      }
-
-      if (!tradeRequest.amount || typeof tradeRequest.amount !== 'number' || tradeRequest.amount <= 0) {
-        return {
-          success: false,
-          error: 'Invalid amount',
-          message: 'Amount is required and must be a positive number',
-          validationDetails: { stage: 'basic_validation', field: 'amount' }
-        };
-      }
-
-      if (!tradeRequest.contractType || typeof tradeRequest.contractType !== 'string') {
-        return {
-          success: false,
-          error: 'Invalid contract type',
-          message: 'Contract type is required and must be a string',
-          validationDetails: { stage: 'basic_validation', field: 'contractType' }
-        };
-      }
-
-      if (!tradeRequest.duration || typeof tradeRequest.duration !== 'number' || tradeRequest.duration <= 0) {
-        return {
-          success: false,
-          error: 'Invalid duration',
-          message: 'Duration is required and must be a positive number',
-          validationDetails: { stage: 'basic_validation', field: 'duration' }
-        };
-      }
-
-      // Contract type mapping and validation
-      const originalContractType = tradeRequest.contractType.toUpperCase();
-      const mappedContractType = config.trading.contractTypeMapping[originalContractType];
-
-      if (!mappedContractType) {
-        return {
-          success: false,
-          error: `Contract type ${originalContractType} is not supported`,
-          message: `Only RISE/FALL (or CALL/PUT) contract types are allowed. Received: ${originalContractType}`,
-          validationDetails: {
-            stage: 'contract_type_validation',
-            originalType: originalContractType,
-            supportedTypes: Object.keys(config.trading.contractTypeMapping),
-            contractTypeRestriction: 'Only Ups & Downs (RISE/FALL) contracts from Continuous Indices are allowed'
-          }
-        };
-      }
-
-      // Strict contract type enforcement
-      if (!['RISE', 'FALL'].includes(mappedContractType)) {
-        return {
-          success: false,
-          error: `Mapped contract type ${mappedContractType} is not allowed`,
-          message: 'Only RISE and FALL contract types are permitted',
-          validationDetails: {
-            stage: 'contract_type_enforcement',
-            originalType: originalContractType,
-            mappedType: mappedContractType,
-            allowedTypes: ['RISE', 'FALL']
-          }
-        };
-      }
-
-      // Market type validation - symbol will be replaced by market selection
-      // but we validate the request structure here
-      if (tradeRequest.symbol && !tradeRequest.symbol.match(/^(R_|1HZ|BOOM|CRASH|RD)/)) {
-        logger.warn('Non-continuous indices symbol provided, will be replaced by market selection', {
-          providedSymbol: tradeRequest.symbol
-        });
-      }
-
-      // Create mapped request
-      const mappedRequest: TradeRequest = {
-        ...tradeRequest,
-        contractType: mappedContractType,
-        durationUnit: tradeRequest.durationUnit || 't' // Default to ticks
-      };
-
-      logger.info('Trade request validation and mapping successful', {
-        original: {
-          contractType: originalContractType,
-          symbol: tradeRequest.symbol
-        },
-        mapped: {
-          contractType: mappedContractType,
-          symbol: mappedRequest.symbol
-        },
-        validationStage: 'complete'
-      });
-
-      return {
-        success: true,
-        mappedRequest,
-        validationDetails: {
-          stage: 'validation_complete',
-          contractTypeMapping: {
-            original: originalContractType,
-            mapped: mappedContractType
-          }
-        }
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown validation error',
-        message: 'Trade request validation failed',
-        validationDetails: {
-          stage: 'validation_error',
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }
-      };
-    }
-  }
-
   private validateTradeRequest(tradeRequest: TradeRequest): void {
-    // Legacy method - kept for backward compatibility
-    // New validation is handled by validateAndMapTradeRequest
-    const result = this.validateAndMapTradeRequest(tradeRequest);
-    if (!result.success) {
-      throw new Error(result.error || 'Validation failed');
+    if (!tradeRequest.symbol || typeof tradeRequest.symbol !== 'string') {
+      throw new Error('Invalid symbol');
+    }
+
+    if (!tradeRequest.amount || typeof tradeRequest.amount !== 'number' || tradeRequest.amount <= 0) {
+      throw new Error('Invalid amount');
+    }
+
+    if (!tradeRequest.contractType || typeof tradeRequest.contractType !== 'string') {
+      throw new Error('Invalid contract type');
+    }
+
+    if (!tradeRequest.duration || typeof tradeRequest.duration !== 'number' || tradeRequest.duration <= 0) {
+      throw new Error('Invalid duration');
+    }
+
+    // Check if contract type is allowed
+    if (!config.trading.allowedContractTypes.includes(tradeRequest.contractType)) {
+      throw new Error(`Contract type ${tradeRequest.contractType} is not allowed`);
     }
   }
 
@@ -562,91 +358,6 @@ export class TradingService {
 
   public getActiveTrades(): ActiveTrade[] {
     return Array.from(this.activeTrades.values());
-  }
-
-  // Market analysis endpoint
-  public async analyzeMarkets(
-    amount: number = 10,
-    duration: number = 5,
-    durationUnit: string = 't'
-  ): Promise<{
-    success: boolean;
-    data?: any;
-    error?: string;
-    message: string;
-  }> {
-    try {
-      logger.info('Starting market analysis', { amount, duration, durationUnit });
-
-      if (!this.derivApi.isConnectedAndAuthenticated()) {
-        return {
-          success: false,
-          error: 'Not connected to Deriv API',
-          message: 'Connection error - cannot analyze markets'
-        };
-      }
-
-      const marketSelection = await this.marketSelectionService.selectOptimalMarket(
-        amount,
-        duration,
-        durationUnit
-      );
-
-      return {
-        success: true,
-        data: {
-          marketAnalysis: {
-            totalMarketsAnalyzed: marketSelection.availableMarkets?.length || 0,
-            eligibleMarkets: marketSelection.availableMarkets?.filter(m => m.isEligible).length || 0,
-            marketsAbove95Percent: marketSelection.availableMarkets?.filter(m => m.meetsMinimumPayout).length || 0,
-            selectedMarket: marketSelection.selectedMarket,
-            selectionReason: marketSelection.selectionReason,
-            selectionSuccess: marketSelection.success
-          },
-          availableMarkets: marketSelection.availableMarkets?.map(market => ({
-            symbol: market.symbol,
-            displayName: market.displayName,
-            risePayoutPercentage: Number(market.risePayoutPercentage.toFixed(2)),
-            fallPayoutPercentage: Number(market.fallPayoutPercentage.toFixed(2)),
-            averagePayoutPercentage: Number(market.averagePayoutPercentage.toFixed(2)),
-            hasIdenticalPayouts: market.hasIdenticalPayouts,
-            meetsMinimumPayout: market.meetsMinimumPayout,
-            isEligible: market.isEligible,
-            marketType: market.marketType,
-            submarket: market.submarket
-          })) || [],
-          configuration: {
-            minimumPayoutRequired: config.trading.minimumPayout,
-            requireIdenticalPayouts: config.trading.requireIdenticalPayouts,
-            allowedContractTypes: config.trading.allowedContractTypes,
-            contractTypeMapping: config.trading.contractTypeMapping
-          },
-          analysisParameters: {
-            amount,
-            duration,
-            durationUnit,
-            timestamp: new Date().toISOString()
-          }
-        },
-        message: marketSelection.success
-          ? `Market analysis completed. Selected: ${marketSelection.selectedMarket?.displayName} with ${marketSelection.selectedMarket?.averagePayoutPercentage.toFixed(2)}% payout`
-          : `Market analysis completed but no suitable market found: ${marketSelection.message}`
-      };
-
-    } catch (error) {
-      logger.error('Error in market analysis:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        message: 'Failed to analyze markets'
-      };
-    }
-  }
-
-  // Clear market cache
-  public clearMarketCache(): void {
-    this.marketSelectionService.clearCache();
-    logger.info('Market cache cleared by request');
   }
 
   // WebSocket service integration

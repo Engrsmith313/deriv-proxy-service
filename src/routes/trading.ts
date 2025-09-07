@@ -166,53 +166,5 @@ export function createTradingRoutes(tradingService: TradingService): Router {
     }
   });
 
-  // Market analysis endpoint
-  router.get('/analyze-markets', async (req: Request, res: Response) => {
-    try {
-      const amount = parseFloat(req.query.amount as string) || 10;
-      const duration = parseInt(req.query.duration as string) || 5;
-      const durationUnit = (req.query.durationUnit as string) || 't';
-
-      logger.info('Market analysis requested', {
-        amount,
-        duration,
-        durationUnit,
-        ip: req.ip
-      });
-
-      const analysis = await tradingService.analyzeMarkets(amount, duration, durationUnit);
-
-      res.status(analysis.success ? 200 : 400).json(analysis);
-    } catch (error) {
-      logger.error('Error in market analysis:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-        message: 'An unexpected error occurred during market analysis'
-      });
-    }
-  });
-
-  // Clear market cache endpoint
-  router.post('/clear-market-cache', async (req: Request, res: Response) => {
-    try {
-      tradingService.clearMarketCache();
-
-      logger.info('Market cache cleared', { ip: req.ip });
-
-      res.status(200).json({
-        success: true,
-        message: 'Market cache cleared successfully'
-      });
-    } catch (error) {
-      logger.error('Error clearing market cache:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-        message: 'An unexpected error occurred while clearing market cache'
-      });
-    }
-  });
-
   return router;
 }
